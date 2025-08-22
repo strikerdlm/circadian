@@ -1,0 +1,10 @@
+streamlit>=1.36.0
+numpy>=2.1.0
+pandas>=2.2.2
+matplotlib>=3.9.0
+scipy>=1.14.1
+fastcore==1.5.29
+pytz>=2024.1
+
+# local package
+-e .

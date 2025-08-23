@@ -16,7 +16,6 @@ from typing import Dict
 VALID_WEARABLE_STREAMS = ['steps', 'heartrate', 'wake', 'light_estimate', 'activity']
 
 # %% ../nbs/api/05_readers.ipynb 7
-@pd.api.extensions.register_dataframe_accessor("wearable")
 class WearableData:
     "pd.DataFrame accessor implementing wearable-specific methods"
     def __init__(self, pandas_obj):
@@ -73,6 +72,10 @@ class WearableData:
             for key, value in metadata.items():
                 obj.attrs[key] = value
             return obj
+
+# Register the accessor only once to avoid duplicate warnings in interactive apps
+if not hasattr(pd.DataFrame, "wearable"):
+    pd.api.extensions.register_dataframe_accessor("wearable")(WearableData)
 
 # %% ../nbs/api/05_readers.ipynb 9
 def load_json(filepath: str, # path to file

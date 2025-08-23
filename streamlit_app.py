@@ -22,6 +22,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# Make the main content container span the full width
+st.markdown(
+    """
+    <style>
+    div.block-container {max-width: 100% !important; padding-left: 0.5rem; padding-right: 0.5rem;}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 # Minimal theming helpers
 PRIMARY_COLOR = "#6C63FF"
 ACCENT_COLOR = "#20C997"
@@ -667,7 +677,7 @@ with tabs[2]:
             title="Actogram (Heatmap)",
             overlay_events=overlay,
         )
-        _render_echarts(option, height=plot_height, full_bleed=True, width=0)
+        _render_echarts(option, height=plot_height)
 
     elif chart_type == "ESRI":
         col_ea, col_eb, col_ec = st.columns(3)
@@ -693,7 +703,7 @@ with tabs[2]:
                 t0 = 0.0
             series[0]["data"] = [[(float(t)-t0)/24.0, float(v) if np.isfinite(v) else None] for t, v in zip(esri_t, esri_vals)]
             option = _build_line_option("ESRI over time", "Time (days)", "ESRI (a.u.)", series)
-            _render_echarts(option, height=plot_height, full_bleed=True, width=0)
+            _render_echarts(option, height=plot_height)
         except Exception as e:
             st.error(f"Failed to compute ESRI: {e}")
 
@@ -798,7 +808,7 @@ with tabs[2]:
             x_min=float(time_days[0]) if len(time_arr) else None,
             x_max=float(time_days[-1]) if len(time_arr) else None,
         )
-        _render_echarts(option, height=plot_height, full_bleed=True, width=0)
+        _render_echarts(option, height=plot_height)
 
 # -----------------------------
 # Footer

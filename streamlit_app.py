@@ -22,11 +22,23 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Make the main content container span the full width
+# Remove Streamlit's default padding and max-width constraints
 st.markdown(
     """
     <style>
-    div.block-container {max-width: 100% !important; padding-left: 0.5rem; padding-right: 0.5rem;}
+    .main .block-container {
+        max-width: none !important;
+        padding-left: 1rem;
+        padding-right: 1rem;
+        padding-top: 1rem;
+    }
+    /* Force all component iframes to stretch to container width */
+    div[data-testid="stIFrame"] > iframe {
+        width: 100% !important;
+    }
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 2px;
+    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -149,20 +161,14 @@ def _get_echarts_js() -> str:
     except Exception:
         return ""
 
-def _render_echarts(option: dict, height: int = 420, key: str = None, width: int = 0, full_bleed: bool = False):
+def _render_echarts(option: dict, height: int = 420, key: str = None, width_px: int = 1800):
     """Render an ECharts chart via a lightweight HTML component."""
     container_id = f"echarts-container-{int(time.time()*1000)}"
     option_json = json.dumps(option)
     echarts_js = _get_echarts_js()
-    if full_bleed:
-        container_style = (
-            "position:relative;left:50%;right:50%;"
-            "width:100vw;margin-left:-50vw;margin-right:-50vw;"
-        )
-    else:
-        container_style = "width:100%;"
+    
     html_str = f"""
-    <div id='{container_id}' style='{container_style}height:{height}px;'></div>
+    <div id='{container_id}' style='width:100%;height:{height}px;'></div>
     <script>
     {echarts_js}
     (function(){{
@@ -171,7 +177,18 @@ def _render_echarts(option: dict, height: int = 420, key: str = None, width: int
             var chart = echarts.init(el, null, {{renderer: 'canvas'}});
             var option = {option_json};
             chart.setOption(option);
-            window.addEventListener('resize', function(){{ chart.resize(); }});
+            
+            // Make chart responsive
+            function resizeChart() {{
+                chart.resize();
+            }}
+            window.addEventListener('resize', resizeChart);
+            
+            // Also resize when container size changes
+            if (window.ResizeObserver) {{
+                var ro = new ResizeObserver(resizeChart);
+                ro.observe(el.parentElement);
+            }}
         }}
         if (typeof echarts === 'undefined' || !echarts.init) {{
             var script = document.createElement('script');
@@ -184,7 +201,10 @@ def _render_echarts(option: dict, height: int = 420, key: str = None, width: int
     }})();
     </script>
     """
-    st_html(html_str, height=height+10, width=int(width))
+    try:
+        st_html(html_str, height=height+10, width=int(width_px))
+    except Exception:
+        st_html(html_str, height=height+10)
 
 def _build_line_option(
     title: str,
@@ -196,12 +216,13 @@ def _build_line_option(
     y_min=None,
     y_max=None,
     y_type: str = "value",
+    show_title: bool = False,
 ) -> dict:
     """Build a configurable multi-series line option for ECharts.
     series: list of dicts with keys: name, data (list of [x,y]), type (default 'line').
     """
     return {
-        "title": {"text": title},
+        "title": {"text": title, "show": bool(show_title)},
         "tooltip": {"trigger": "axis"},
         "legend": {"type": "scroll"},
         "grid": {"left": 40, "right": 20, "top": 40, "bottom": 60},
@@ -243,10 +264,11 @@ def _build_multi_axis_line_option(
     series: list,
     x_min=None,
     x_max=None,
+    show_title: bool = False,
 ) -> dict:
     """Build a multi y-axis line chart. y_axes is a list of axis dicts."""
     return {
-        "title": {"text": title},
+        "title": {"text": title, "show": bool(show_title)},
         "tooltip": {"trigger": "axis"},
         "legend": {"type": "scroll"},
         "grid": {"left": 60, "right": 70, "top": 50, "bottom": 80},
@@ -284,6 +306,7 @@ def _build_actogram_heatmap_option(
     bin_hours: float = 0.5,
     title: str = "Actogram (Heatmap)",
     overlay_events: dict = None,
+    show_title: bool = False,
 ) -> dict:
     """Build an actogram-like heatmap with X = days and Y = Zeitgeber Time.
     overlay_events: mapping name -> list of event times (in hours absolute).
@@ -366,7 +389,7 @@ def _build_actogram_heatmap_option(
             })
 
     option = {
-        "title": {"text": title},
+        "title": {"text": title, "show": bool(show_title)},
         "tooltip": {"position": "top"},
         "grid": {"left": 60, "right": 20, "top": 40, "bottom": 40},
         "xAxis": {
@@ -403,12 +426,13 @@ def _build_two_row_line_option(
     series_bottom: list,
     x_min=None,
     x_max=None,
+    show_titles: bool = False,
 ):
     """Two vertically stacked line charts sharing the x domain."""
     option = {
         "title": [
-            {"text": title_top, "left": 10, "top": 5},
-            {"text": title_bottom, "left": 10, "top": "52%"},
+            {"text": title_top, "left": 10, "top": 5, "show": bool(show_titles)},
+            {"text": title_bottom, "left": 10, "top": "52%", "show": bool(show_titles)},
         ],
         "tooltip": {"trigger": "axis"},
         "legend": {"type": "scroll", "top": 28},
@@ -656,6 +680,9 @@ with tabs[2]:
         show_dlmo_ec = st.checkbox("Overlay DLMO", value=True)
         show_cbt_ec = st.checkbox("Overlay CBTmin", value=False)
     plot_height = st.slider("Plot height (px)", min_value=360, max_value=900, value=560, step=20)
+    
+    # Create a full-width container for the chart
+    chart_container = st.container()
 
     if chart_type == "Actogram (Heatmap)":
         bin_hours = st.select_slider("Bin size (hours)", options=[0.25, 0.5, 1.0, 2.0], value=0.5)
@@ -676,8 +703,10 @@ with tabs[2]:
             bin_hours=float(bin_hours),
             title="Actogram (Heatmap)",
             overlay_events=overlay,
+            show_title=False,
         )
-        _render_echarts(option, height=plot_height)
+        with chart_container:
+            _render_echarts(option, height=plot_height, width_px=2000)
 
     elif chart_type == "ESRI":
         col_ea, col_eb, col_ec = st.columns(3)
@@ -702,8 +731,9 @@ with tabs[2]:
             else:
                 t0 = 0.0
             series[0]["data"] = [[(float(t)-t0)/24.0, float(v) if np.isfinite(v) else None] for t, v in zip(esri_t, esri_vals)]
-            option = _build_line_option("ESRI over time", "Time (days)", "ESRI (a.u.)", series)
-            _render_echarts(option, height=plot_height)
+            option = _build_line_option("ESRI over time", "Time (days)", "ESRI (a.u.)", series, show_title=False)
+            with chart_container:
+                _render_echarts(option, height=plot_height, width_px=2000)
         except Exception as e:
             st.error(f"Failed to compute ESRI: {e}")
 
@@ -807,8 +837,10 @@ with tabs[2]:
             series_bottom=phase_series + light_series,
             x_min=float(time_days[0]) if len(time_arr) else None,
             x_max=float(time_days[-1]) if len(time_arr) else None,
+            show_titles=False,
         )
-        _render_echarts(option, height=plot_height)
+        with chart_container:
+            _render_echarts(option, height=plot_height, width_px=2000)
 
 # -----------------------------
 # Footer

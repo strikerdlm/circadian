@@ -482,7 +482,7 @@ with tabs[0]:
     left, right = st.columns([0.45, 0.55], gap="large")
 
     with left:
-        st.subheader("Light Schedule")
+        st.subheader("💡 Light Schedule")
         schedule_name = st.selectbox("Schedule", SCHEDULE_OPTIONS, index=0)
         total_days = st.slider("Total days", min_value=5, max_value=120, value=30, step=1)
         step_hours = st.select_slider("Time step (hours)", options=[0.05, 0.1, 0.25, 0.5, 1.0], value=0.1)
@@ -511,18 +511,19 @@ with tabs[0]:
             sched_params["period"] = st.number_input("Repeat every (h)", min_value=0.0, max_value=168.0, value=24.0, step=1.0)
             sched_params["baseline"] = st.number_input("Baseline Lux", min_value=0.0, value=0.0, step=10.0)
 
-        with st.expander("Advanced"):
-            equilibration_reps = st.number_input("Equilibration repetitions", min_value=0, max_value=20, value=2, step=1)
-            show_dlmo = st.checkbox("Show DLMO", value=True)
-            show_cbt = st.checkbox("Show CBTmin", value=False)
-            threshold = st.number_input("Actogram threshold (Lux)", min_value=0.0, value=10.0, step=1.0)
-            smooth_sigma = st.number_input("Smooth sigma", min_value=0.0, value=2.0, step=0.5)
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        with st.expander("⚙️ Advanced"):
+            equilibration_reps = st.number_input("Equilibration repetitions", min_value=0, max_value=20, value=2, step=1, help="How many times to loop the schedule to reach equilibrium before simulating.")
+            show_dlmo = st.toggle("Overlay DLMO", value=True, help="Show DLMO phase markers on the actogram.")
+            show_cbt = st.toggle("Overlay CBTmin", value=False, help="Show CBT minimum phase markers on the actogram.")
+            threshold = st.number_input("Actogram threshold (Lux)", min_value=0.0, value=10.0, step=1.0, help="Lux cutoff between light and dark for actogram shading.")
+            smooth_sigma = st.number_input("Smooth sigma", min_value=0.0, value=2.0, step=0.5, help="Gaussian smoothing for actogram streams.")
 
         st.markdown("<div style='height:6px'></div>", unsafe_allow_html=True)
-        st.caption("Tip: Use the examples on the right to quickly get started.")
+        st.caption("💡 Tip: Use the examples on the right to quickly get started.")
 
     with right:
-        st.subheader("Models and Examples")
+        st.subheader("🧠 Models and Examples")
         chosen_models = st.multiselect("Models", list(MODEL_OPTIONS.keys()), default=["Forger99", "Hannay19"])
         example = st.selectbox(
             "Examples",
@@ -571,7 +572,7 @@ with tabs[0]:
 # Tab 2: Wearable Data
 # -----------------------------
 with tabs[1]:
-    st.subheader("Wearable Data Actogram")
+    st.subheader("⌚ Wearable Data Actogram")
     st.caption("Upload CSV or JSON that matches the package reader formats. Example files are in circadian/sample_data.")
 
     col_u1, col_u2 = st.columns([0.6, 0.4])
@@ -582,7 +583,7 @@ with tabs[1]:
         smooth_sigma_u = st.number_input("Smooth sigma", min_value=0.0, value=0.5, step=0.5)
     with col_u2:
         demo_choice = st.selectbox("Or load an example", ["None", "sample_actiwatch.csv", "steps_data.csv", "hr_data.csv"], index=0)
-        run_plot = st.button("Plot Actogram", type="primary", use_container_width=True)
+        run_plot = st.button("▶️ Plot Actogram", type="primary", use_container_width=True)
 
     def _load_demo(path_name: str):
         base = os.path.join("circadian", "sample_data")
@@ -660,7 +661,7 @@ with tabs[1]:
 # Tab 3: Interactive Charts (ECharts)
 # -----------------------------
 with tabs[2]:
-    st.subheader("Interactive Charts (ECharts)")
+    st.subheader("📈 Interactive Charts (ECharts)")
     st.caption("Interactive, publication-aligned visualizations with ECharts. Uses your Simulation settings.")
 
     # Recompute core arrays based on current selections
@@ -675,11 +676,13 @@ with tabs[2]:
             index=0,
         )
     with col_ec2:
-        smooth_lines = st.checkbox("Smooth lines", value=True)
-        show_light_overlay = st.checkbox("Show light overlay", value=True)
-        show_dlmo_ec = st.checkbox("Overlay DLMO", value=True)
-        show_cbt_ec = st.checkbox("Overlay CBTmin", value=False)
+        smooth_lines = st.toggle("Smooth lines", value=True, help="Enable line smoothing for readability.")
+        show_light_overlay = st.toggle("Show light overlay", value=True, help="Show light schedule overlay.")
+        show_dlmo_ec = st.toggle("Overlay DLMO", value=True, help="Show DLMO markers in charts.")
+        show_cbt_ec = st.toggle("Overlay CBTmin", value=False, help="Show CBTmin markers in charts.")
     plot_height = st.slider("Plot height (px)", min_value=360, max_value=900, value=560, step=20)
+
+    st.divider()
     
     # Create a full-width container for the chart
     chart_container = st.container()

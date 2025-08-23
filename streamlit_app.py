@@ -115,11 +115,18 @@ def compute_light(
             shift=params.get("shift", 8.0),
         )
     elif schedule_name == "SocialJetlag":
+        # Map UI parameters to library API: SocialJetlag expects `hours_delayed`
+        # If separate bedtime/waketime delays are provided, combine them sensibly
+        hours_delayed = params.get("hours_delayed")
+        if hours_delayed is None:
+            late_bedtime = float(params.get("late_bedtime", 1.0))
+            late_waketime = float(params.get("late_waketime", 2.0))
+            # Use average shift as a simple, stable proxy
+            hours_delayed = float((late_bedtime + late_waketime) / 2.0)
         sched = LightSchedule.SocialJetlag(
             lux=params.get("lux", 150.0),
             num_regular_days=int(params.get("num_regular_days", 5)),
-            late_bedtime=params.get("late_bedtime", 1.0),
-            late_waketime=params.get("late_waketime", 2.0),
+            hours_delayed=float(hours_delayed),
         )
     elif schedule_name == "Custom Pulse":
         sched = LightSchedule.from_pulse(

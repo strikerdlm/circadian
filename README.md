@@ -61,7 +61,35 @@ for a full overview of the package and its features.
 - **Wearable data**: CSV/JSON readers (`load_csv`, `load_json`), a `DataFrame.wearable` accessor, and sample data for quick visualization.
 - **Metrics**: ESRI (Entrainment Signal Regularity Index) computation utilities.
 - **Command line**: Scriptable actograms and ESRI workflows in `circadian/cli.py`.
-- **Interactive UI**: A Streamlit app (Circadian Explorer) for model simulation and wearable visualization. See `README_STREAMLIT.md`.
+- **Interactive UI**: Streamlit app (Circadian Explorer) with interactive ECharts visualizations for model simulation and wearable data (Amplitude & Phase, Actogram heatmaps with DLMO/CBT overlays, ESRI). See the Streamlit section below.
+
+## Streamlit app (Circadian Explorer)
+
+Run an interactive UI to simulate models, explore light schedules, and visualize results with ECharts.
+
+1) Install Python dependencies
+```bash
+pip install -r requirements.txt
+```
+
+2) Install ECharts (recommended for local assets)
+```bash
+npm install
+```
+- This installs `echarts` into `node_modules/` per `package.json`. The app will automatically fall back to a CDN if ECharts is not installed locally, but local install is recommended for offline use and faster loads.
+
+3) Launch the app
+```bash
+streamlit run streamlit_app.py
+```
+
+4) Open the browser URL that Streamlit prints (usually http://localhost:8501).
+
+### Interactive capabilities
+- Amplitude and Phase over time for selected models
+- Light overlay (log10(1+lux)) on a secondary axis
+- Actogram Heatmap of light schedule with optional DLMO/CBT overlays
+- ESRI metric over time
 
 ## Example
 

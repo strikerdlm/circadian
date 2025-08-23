@@ -2,13 +2,14 @@ import os
 import json
 import time
 import numpy as np
-import pandas as pd
 import streamlit as st
 import matplotlib.pyplot as plt
+from streamlit.components.v1 import html as st_html
 
 from circadian.lights import LightSchedule
 from circadian.models import Forger99, Jewett99, Hannay19, Hannay19TP
 from circadian.plots import Actogram
+from circadian.metrics import esri
 from circadian.readers import load_csv, load_json
 
 # -----------------------------
@@ -63,8 +64,11 @@ SCHEDULE_OPTIONS = [
 def generate_time_series(total_days: int, step_hours: float) -> np.ndarray:
     return np.arange(0, 24 * total_days, step_hours)
 
+
 @st.cache_data(show_spinner=False)
-def compute_light(schedule_name: str, time: np.ndarray, params: dict) -> np.ndarray:
+def compute_light(
+    schedule_name: str, time: np.ndarray, params: dict
+) -> np.ndarray:
     if schedule_name == "Regular":
         sched = LightSchedule.Regular(
             lux=params.get("lux", 150.0),
@@ -102,17 +106,275 @@ def compute_light(schedule_name: str, time: np.ndarray, params: dict) -> np.ndar
     return sched(time)
 
 @st.cache_data(show_spinner=False)
-def equilibrate_model(model_name: str, time: np.ndarray, light: np.ndarray, equilibration_reps: int):
+def equilibrate_model(
+    model_name: str,
+    time: np.ndarray,
+    light: np.ndarray,
+    equilibration_reps: int,
+):
     model_cls = MODEL_OPTIONS[model_name]
     model = model_cls()
     return model, model.equilibrate(time, light, equilibration_reps)
 
 @st.cache_data(show_spinner=False)
-def integrate_model(model_name: str, time: np.ndarray, light: np.ndarray, x0: np.ndarray):
+def integrate_model(
+    model_name: str, time: np.ndarray, light: np.ndarray, x0: np.ndarray
+):
     model_cls = MODEL_OPTIONS[model_name]
     model = model_cls()
     traj = model(time, x0, light)
     return model, traj
+
+# -----------------------------
+# ECharts helpers
+# -----------------------------
+@st.cache_data(show_spinner=False)
+def _get_echarts_js() -> str:
+    """Load ECharts from local node_modules; fallback handled at render time."""
+    try:
+        base_dir = os.path.dirname(__file__)
+        js_path = os.path.join(base_dir, "node_modules", "echarts", "dist", "echarts.min.js")
+        with open(js_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception:
+        return ""
+
+def _render_echarts(option: dict, height: int = 420, key: str = None):
+    """Render an ECharts chart via a lightweight HTML component."""
+    container_id = f"echarts-container-{int(time.time()*1000)}"
+    option_json = json.dumps(option)
+    echarts_js = _get_echarts_js()
+    html_str = f"""
+    <div id='{container_id}' style='width:100%;height:{height}px;'></div>
+    <script>
+    {echarts_js}
+    (function(){{
+        function init(){{
+            var el = document.getElementById('{container_id}');
+            var chart = echarts.init(el, null, {{renderer: 'canvas'}});
+            var option = {option_json};
+            chart.setOption(option);
+            window.addEventListener('resize', function(){{ chart.resize(); }});
+        }}
+        if (typeof echarts === 'undefined' || !echarts.init) {{
+            var script = document.createElement('script');
+            script.src = 'https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js';
+            script.onload = init;
+            document.head.appendChild(script);
+        }} else {{
+            init();
+        }}
+    }})();
+    </script>
+    """
+    st_html(html_str, height=height+10)
+
+def _build_line_option(
+    title: str,
+    x_label: str,
+    y_label: str,
+    series: list,
+    x_min=None,
+    x_max=None,
+    y_min=None,
+    y_max=None,
+    y_type: str = "value",
+) -> dict:
+    """Build a configurable multi-series line option for ECharts.
+    series: list of dicts with keys: name, data (list of [x,y]), type (default 'line').
+    """
+    return {
+        "title": {"text": title},
+        "tooltip": {"trigger": "axis"},
+        "legend": {"type": "scroll"},
+        "grid": {"left": 40, "right": 20, "top": 40, "bottom": 60},
+        "dataZoom": [
+            {"type": "inside"},
+            {"type": "slider"}
+        ],
+        "xAxis": {
+            "type": "value",
+            "name": x_label,
+            "min": x_min,
+            "max": x_max,
+            "axisPointer": {"label": {"show": True}},
+        },
+        "yAxis": {
+            "type": y_type,
+            "name": y_label,
+            "min": y_min,
+            "max": y_max,
+            "axisPointer": {"label": {"show": True}},
+        },
+        "series": [{
+            "name": s.get("name", "Series"),
+            "type": s.get("type", "line"),
+            "showSymbol": s.get("showSymbol", False),
+            "smooth": s.get("smooth", True),
+            "areaStyle": s.get("areaStyle"),
+            "data": s.get("data", []),
+            "yAxisIndex": s.get("yAxisIndex", 0),
+            "xAxisIndex": s.get("xAxisIndex", 0),
+            "markLine": s.get("markLine"),
+        } for s in series]
+    }
+
+def _build_multi_axis_line_option(
+    title: str,
+    x_label: str,
+    y_axes: list,
+    series: list,
+    x_min=None,
+    x_max=None,
+) -> dict:
+    """Build a multi y-axis line chart. y_axes is a list of axis dicts."""
+    return {
+        "title": {"text": title},
+        "tooltip": {"trigger": "axis"},
+        "legend": {"type": "scroll"},
+        "grid": {"left": 45, "right": 45, "top": 40, "bottom": 60},
+        "dataZoom": [
+            {"type": "inside"},
+            {"type": "slider"}
+        ],
+        "xAxis": {
+            "type": "value",
+            "name": x_label,
+            "min": x_min,
+            "max": x_max,
+            "axisPointer": {"label": {"show": True}},
+        },
+        "yAxis": y_axes,
+        "series": [{
+            "name": s.get("name", "Series"),
+            "type": s.get("type", "line"),
+            "showSymbol": s.get("showSymbol", False),
+            "smooth": s.get("smooth", True),
+            "areaStyle": s.get("areaStyle"),
+            "data": s.get("data", []),
+            "yAxisIndex": s.get("yAxisIndex", 0),
+            "xAxisIndex": s.get("xAxisIndex", 0),
+            "lineStyle": s.get("lineStyle"),
+            "markLine": s.get("markLine"),
+            "step": s.get("step"),
+        } for s in series]
+    }
+
+def _build_actogram_heatmap_option(
+    time_hours: np.ndarray,
+    light_vals: np.ndarray,
+    threshold: float = 10.0,
+    bin_hours: float = 0.5,
+    title: str = "Actogram (Heatmap)",
+    overlay_events: dict = None,
+) -> dict:
+    """Build a day vs time-of-day heatmap (actogram-like) with optional event overlays.
+    overlay_events: mapping name -> list of event times (in hours absolute).
+    """
+    if len(time_hours) == 0:
+        return {}
+    t0 = time_hours[0]
+    rel_t = time_hours - t0
+    total_hours = rel_t[-1]
+    num_days = int(np.ceil(total_hours / 24.0))
+    num_bins = int(np.round(24.0 / bin_hours))
+
+    # prepare categories
+    x_cats = [f"{(i*bin_hours):.1f}" for i in range(num_bins)]
+    y_cats = [f"Day {d+1}" for d in range(num_days)]
+
+    # normalize light (log-scale-like) for coloring
+    lv = np.asarray(light_vals).astype(float)
+    lv_norm = np.log10(1.0 + lv)
+    vmax = float(np.nanmax(lv_norm)) if np.isfinite(lv_norm).any() else 1.0
+    if vmax <= 0:
+        vmax = 1.0
+
+    heat = np.zeros((num_days, num_bins), dtype=float)
+    counts = np.zeros((num_days, num_bins), dtype=float)
+    for t, v in zip(rel_t, lv_norm):
+        day_idx = int(np.floor(t / 24.0))
+        if day_idx < 0 or day_idx >= num_days:
+            continue
+        tod = t % 24.0
+        bin_idx = int(np.floor(tod / bin_hours))
+        if bin_idx >= num_bins:
+            bin_idx = num_bins - 1
+        heat[day_idx, bin_idx] += v
+        counts[day_idx, bin_idx] += 1.0
+    with np.errstate(invalid='ignore'):
+        heat = np.divide(
+            heat,
+            counts,
+            out=np.zeros_like(heat),
+            where=counts > 0,
+        )
+    # scale to 0..1
+    heat_scaled = (heat / vmax).tolist()
+
+    data = []
+    for yi in range(num_days):
+        for xi in range(num_bins):
+            data.append([xi, yi, round(heat_scaled[yi][xi], 4)])
+
+    series = [{
+        "name": "Light",
+        "type": "heatmap",
+        "data": data,
+        "progressive": 0,
+    }]
+
+    # overlay events (e.g., CBT/DLMO)
+    if overlay_events:
+        for name, times in overlay_events.items():
+            scat = []
+            for t_abs in times:
+                t = float(t_abs - t0)
+                if t < 0 or t > total_hours:
+                    continue
+                day_idx = int(np.floor(t / 24.0))
+                tod = (t % 24.0)
+                xi = int(np.floor(tod / bin_hours))
+                if xi >= num_bins:
+                    xi = num_bins - 1
+                scat.append([xi, day_idx])
+            series.append({
+                "name": name,
+                "type": "scatter",
+                "symbolSize": 8,
+                "itemStyle": {"borderWidth": 0.5},
+                "data": scat,
+                "tooltip": {"valueFormatter": None},
+            })
+
+    option = {
+        "title": {"text": title},
+        "tooltip": {"position": "top"},
+        "grid": {"left": 60, "right": 20, "top": 40, "bottom": 40},
+        "xAxis": {
+            "type": "category",
+            "name": "Zeitgeber Time (h)",
+            "data": x_cats,
+            "axisLabel": {"interval": int(max(1, num_bins//24)), "rotate": 0},
+        },
+        "yAxis": {
+            "type": "category",
+            "data": y_cats,
+            "inverse": True,
+        },
+        "visualMap": {
+            "min": 0,
+            "max": 1,
+            "calculable": True,
+            "orient": "horizontal",
+            "left": "center",
+            "bottom": 0,
+        },
+        "series": series,
+        "legend": {"type": "scroll"},
+        "animation": False,
+    }
+    return option
 
 # -----------------------------
 # Tabs
@@ -120,6 +382,7 @@ def integrate_model(model_name: str, time: np.ndarray, light: np.ndarray, x0: np
 tabs = st.tabs([
     "Simulation", 
     "Wearable Data", 
+    "Interactive Charts",
 ])
 
 # -----------------------------
@@ -302,6 +565,161 @@ with tabs[1]:
             st.error(f"Failed to plot actogram: {e}")
     elif run_plot and df is None:
         st.info("Please upload a file or select an example.")
+
+# -----------------------------
+# Tab 3: Interactive Charts (ECharts)
+# -----------------------------
+with tabs[2]:
+    st.subheader("Interactive Charts (ECharts)")
+    st.caption("Interactive, publication-aligned visualizations with ECharts. Uses your Simulation settings.")
+
+    # Recompute core arrays based on current selections
+    time_arr = generate_time_series(total_days=total_days, step_hours=float(step_hours))
+    light_arr = compute_light(schedule_name, time_arr, sched_params)
+
+    col_ec1, col_ec2 = st.columns([0.55, 0.45], gap="large")
+    with col_ec1:
+        chart_type = st.selectbox(
+            "Chart type",
+            ["Amplitude & Phase", "Actogram (Heatmap)", "ESRI"],
+            index=0,
+        )
+    with col_ec2:
+        smooth_lines = st.checkbox("Smooth lines", value=True)
+        show_light_overlay = st.checkbox("Show light overlay", value=True)
+        show_dlmo_ec = st.checkbox("Overlay DLMO", value=True)
+        show_cbt_ec = st.checkbox("Overlay CBTmin", value=False)
+
+    if chart_type == "Actogram (Heatmap)":
+        bin_hours = st.select_slider("Bin size (hours)", options=[0.25, 0.5, 1.0, 2.0], value=0.5)
+        # Compute events from first selected model for overlay clarity
+        overlay = {}
+        if len(chosen_models) > 0:
+            model_name = chosen_models[0]
+            model, x0 = equilibrate_model(model_name, time_arr, light_arr, equilibration_reps)
+            _, traj = integrate_model(model_name, time_arr, light_arr, x0)
+            if show_dlmo_ec:
+                overlay["DLMO"] = list(model.dlmos(traj))
+            if show_cbt_ec:
+                overlay["CBTmin"] = list(model.cbt(traj))
+        option = _build_actogram_heatmap_option(time_arr, light_arr, threshold=threshold, bin_hours=float(bin_hours), title="Actogram (Heatmap)", overlay_events=overlay)
+        _render_echarts(option, height=460)
+
+    elif chart_type == "ESRI":
+        col_ea, col_eb, col_ec = st.columns(3)
+        with col_ea:
+            esri_days = st.number_input("Analysis days", min_value=2, max_value=10, value=4, step=1)
+        with col_eb:
+            esri_dt = st.select_slider("ESRI dt (h)", options=[0.5, 1.0, 2.0], value=1.0)
+        with col_ec:
+            init_amp = st.number_input("Initial amplitude", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
+        try:
+            esri_t, esri_vals = esri(time_arr, light_arr, analysis_days=int(esri_days), esri_dt=float(esri_dt), initial_amplitude=float(init_amp))
+            series = [{
+                "name": "ESRI",
+                "data": [[float(t), float(v) if np.isfinite(v) else None] for t, v in zip(esri_t, esri_vals)],
+                "type": "line",
+                "showSymbol": False,
+                "smooth": smooth_lines,
+            }]
+            option = _build_line_option("ESRI over time", "Time (h)", "ESRI (a.u.)", series)
+            _render_echarts(option, height=420)
+        except Exception as e:
+            st.error(f"Failed to compute ESRI: {e}")
+
+    else:
+        # Amplitude & Phase view
+        # Compute for each selected model
+        amp_series = []
+        phase_series = []
+        cbt_times_all = []
+        dlmo_times_all = []
+        for model_name in chosen_models:
+            try:
+                model, x0 = equilibrate_model(model_name, time_arr, light_arr, equilibration_reps)
+                _, traj = integrate_model(model_name, time_arr, light_arr, x0)
+                amp_vals = model.amplitude(traj)
+                phi = model.phase(traj)
+                # convert phase (rad) to hours in [0,24)
+                phi = np.mod(phi, 2.0*np.pi)
+                phi_hours = (phi * 12.0 / np.pi)
+                amp_series.append({
+                    "name": f"{model_name} Amplitude",
+                    "data": [[float(t), float(a)] for t, a in zip(time_arr, amp_vals)],
+                    "type": "line",
+                    "yAxisIndex": 0,
+                    "showSymbol": False,
+                    "smooth": smooth_lines,
+                })
+                phase_series.append({
+                    "name": f"{model_name} Phase (h)",
+                    "data": [[float(t), float(ph)] for t, ph in zip(time_arr, phi_hours)],
+                    "type": "line",
+                    "yAxisIndex": 1,
+                    "showSymbol": False,
+                    "smooth": smooth_lines,
+                    "lineStyle": {"type": "dashed"},
+                })
+                if show_cbt_ec:
+                    cbt_times = list(model.cbt(traj))
+                    cbt_times_all.extend(cbt_times)
+                if show_dlmo_ec:
+                    dlmo_times = list(model.dlmos(traj))
+                    dlmo_times_all.extend(dlmo_times)
+            except Exception as e:
+                st.warning(f"{model_name} failed: {e}")
+
+        # Build light overlay series (secondary axis, log-like visually)
+        light_series = []
+        if show_light_overlay:
+            light_plot_vals = np.log10(1.0 + np.asarray(light_arr, dtype=float))
+            light_series.append({
+                "name": "Light (log10(1+lux))",
+                "data": [[float(t), float(v)] for t, v in zip(time_arr, light_plot_vals)],
+                "type": "line",
+                "yAxisIndex": 2,
+                "showSymbol": False,
+                "smooth": False,
+                "areaStyle": {"opacity": 0.25},
+                "lineStyle": {"width": 1},
+            })
+
+        # Vertical markers for phase markers (markLine on first amplitude series if exists)
+        def _mk_markline(times: list, name: str, color: str):
+            if not times:
+                return None
+            return {
+                "symbol": ["none", "none"],
+                "label": {"show": False},
+                "lineStyle": {"type": "dotted", "color": color, "width": 1},
+                "data": [{"xAxis": float(t), "name": name} for t in times],
+            }
+
+        if amp_series:
+            amp_series[0]["markLine"] = _mk_markline(cbt_times_all, "CBTmin", "#20C997") if show_cbt_ec else None
+            if amp_series[0].get("markLine") and show_dlmo_ec:
+                # ECharts markLine data can be combined
+                dl = _mk_markline(dlmo_times_all, "DLMO", "#6C63FF")
+                if dl:
+                    amp_series[0]["markLine"]["data"].extend(dl["data"])
+            elif show_dlmo_ec:
+                amp_series[0]["markLine"] = _mk_markline(dlmo_times_all, "DLMO", "#6C63FF")
+
+        y_axes = [
+            {"type": "value", "name": "Amplitude (a.u.)"},
+            {"type": "value", "name": "Phase (h)", "min": 0, "max": 24},
+            {"type": "value", "name": "Light (log10(1+lux))"},
+        ]
+
+        option = _build_multi_axis_line_option(
+            "Amplitude, Phase, and Light",
+            "Time (h)",
+            y_axes,
+            amp_series + phase_series + light_series,
+            x_min=float(time_arr[0]) if len(time_arr) else None,
+            x_max=float(time_arr[-1]) if len(time_arr) else None,
+        )
+        _render_echarts(option, height=480)
 
 # -----------------------------
 # Footer

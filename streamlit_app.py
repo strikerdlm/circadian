@@ -139,7 +139,7 @@ def _get_echarts_js() -> str:
     except Exception:
         return ""
 
-def _render_echarts(option: dict, height: int = 420, key: str = None):
+def _render_echarts(option: dict, height: int = 420, key: str = None, width: int = None):
     """Render an ECharts chart via a lightweight HTML component."""
     container_id = f"echarts-container-{int(time.time()*1000)}"
     option_json = json.dumps(option)
@@ -167,7 +167,10 @@ def _render_echarts(option: dict, height: int = 420, key: str = None):
     }})();
     </script>
     """
-    st_html(html_str, height=height+10)
+    if width is not None:
+        st_html(html_str, height=height+10, width=int(width))
+    else:
+        st_html(html_str, height=height+10)
 
 def _build_line_option(
     title: str,
@@ -232,7 +235,7 @@ def _build_multi_axis_line_option(
         "title": {"text": title},
         "tooltip": {"trigger": "axis"},
         "legend": {"type": "scroll"},
-        "grid": {"left": 45, "right": 45, "top": 40, "bottom": 60},
+        "grid": {"left": 60, "right": 70, "top": 50, "bottom": 80},
         "dataZoom": [
             {"type": "inside"},
             {"type": "slider"}
@@ -268,7 +271,7 @@ def _build_actogram_heatmap_option(
     title: str = "Actogram (Heatmap)",
     overlay_events: dict = None,
 ) -> dict:
-    """Build a day vs time-of-day heatmap (actogram-like) with optional event overlays.
+    """Build an actogram-like heatmap with X = days and Y = Zeitgeber Time.
     overlay_events: mapping name -> list of event times (in hours absolute).
     """
     if len(time_hours) == 0:
@@ -279,9 +282,9 @@ def _build_actogram_heatmap_option(
     num_days = int(np.ceil(total_hours / 24.0))
     num_bins = int(np.round(24.0 / bin_hours))
 
-    # prepare categories
-    x_cats = [f"{(i*bin_hours):.1f}" for i in range(num_bins)]
-    y_cats = [f"Day {d+1}" for d in range(num_days)]
+    # prepare categories (X = Days, Y = Zeitgeber Time)
+    x_cats = [f"Day {d+1}" for d in range(num_days)]
+    y_cats = [f"{(i*bin_hours):.1f}" for i in range(num_bins)]
 
     # normalize light (log-scale-like) for coloring
     lv = np.asarray(light_vals).astype(float)
@@ -290,8 +293,9 @@ def _build_actogram_heatmap_option(
     if vmax <= 0:
         vmax = 1.0
 
-    heat = np.zeros((num_days, num_bins), dtype=float)
-    counts = np.zeros((num_days, num_bins), dtype=float)
+    # matrix indexed as [bin_idx, day_idx] so that Y corresponds to ZT bins
+    heat = np.zeros((num_bins, num_days), dtype=float)
+    counts = np.zeros((num_bins, num_days), dtype=float)
     for t, v in zip(rel_t, lv_norm):
         day_idx = int(np.floor(t / 24.0))
         if day_idx < 0 or day_idx >= num_days:
@@ -300,8 +304,8 @@ def _build_actogram_heatmap_option(
         bin_idx = int(np.floor(tod / bin_hours))
         if bin_idx >= num_bins:
             bin_idx = num_bins - 1
-        heat[day_idx, bin_idx] += v
-        counts[day_idx, bin_idx] += 1.0
+        heat[bin_idx, day_idx] += v
+        counts[bin_idx, day_idx] += 1.0
     with np.errstate(invalid='ignore'):
         heat = np.divide(
             heat,
@@ -313,8 +317,8 @@ def _build_actogram_heatmap_option(
     heat_scaled = (heat / vmax).tolist()
 
     data = []
-    for yi in range(num_days):
-        for xi in range(num_bins):
+    for yi in range(num_bins):
+        for xi in range(num_days):
             data.append([xi, yi, round(heat_scaled[yi][xi], 4)])
 
     series = [{
@@ -334,10 +338,10 @@ def _build_actogram_heatmap_option(
                     continue
                 day_idx = int(np.floor(t / 24.0))
                 tod = (t % 24.0)
-                xi = int(np.floor(tod / bin_hours))
-                if xi >= num_bins:
-                    xi = num_bins - 1
-                scat.append([xi, day_idx])
+                yi = int(np.floor(tod / bin_hours))
+                if yi >= num_bins:
+                    yi = num_bins - 1
+                scat.append([day_idx, yi])
             series.append({
                 "name": name,
                 "type": "scatter",
@@ -353,14 +357,13 @@ def _build_actogram_heatmap_option(
         "grid": {"left": 60, "right": 20, "top": 40, "bottom": 40},
         "xAxis": {
             "type": "category",
-            "name": "Zeitgeber Time (h)",
+            "name": "Days",
             "data": x_cats,
-            "axisLabel": {"interval": int(max(1, num_bins//24)), "rotate": 0},
         },
         "yAxis": {
             "type": "category",
+            "name": "Zeitgeber Time (h)",
             "data": y_cats,
-            "inverse": True,
         },
         "visualMap": {
             "min": 0,
@@ -374,6 +377,55 @@ def _build_actogram_heatmap_option(
         "legend": {"type": "scroll"},
         "animation": False,
     }
+    return option
+
+def _build_two_row_line_option(
+    title_top: str,
+    title_bottom: str,
+    x_label: str,
+    y_label_top: str,
+    y_label_bottom: str,
+    series_top: list,
+    series_bottom: list,
+    x_min=None,
+    x_max=None,
+):
+    """Two vertically stacked line charts sharing the x domain."""
+    option = {
+        "title": [
+            {"text": title_top, "left": 10, "top": 5},
+            {"text": title_bottom, "left": 10, "top": "52%"},
+        ],
+        "tooltip": {"trigger": "axis"},
+        "legend": {"type": "scroll", "top": 28},
+        "grid": [
+            {"left": 60, "right": 30, "top": 50, "height": "35%"},
+            {"left": 60, "right": 30, "top": "58%", "height": "32%"},
+        ],
+        "dataZoom": [
+            {"type": "inside", "xAxisIndex": [0, 1]},
+            {"type": "slider", "xAxisIndex": [0, 1]},
+        ],
+        "xAxis": [
+            {"type": "value", "name": x_label, "min": x_min, "max": x_max},
+            {"type": "value", "name": x_label, "min": x_min, "max": x_max, "gridIndex": 1},
+        ],
+        "yAxis": [
+            {"type": "value", "name": y_label_top},
+            {"type": "value", "name": y_label_bottom, "gridIndex": 1},
+        ],
+        "series": [],
+    }
+    for s in series_top:
+        s_new = dict(s)
+        s_new["xAxisIndex"] = 0
+        s_new["yAxisIndex"] = 0
+        option["series"].append(s_new)
+    for s in series_bottom:
+        s_new = dict(s)
+        s_new["xAxisIndex"] = 1
+        s_new["yAxisIndex"] = 1
+        option["series"].append(s_new)
     return option
 
 # -----------------------------
@@ -577,7 +629,7 @@ with tabs[2]:
     time_arr = generate_time_series(total_days=total_days, step_hours=float(step_hours))
     light_arr = compute_light(schedule_name, time_arr, sched_params)
 
-    col_ec1, col_ec2 = st.columns([0.55, 0.45], gap="large")
+    col_ec1, col_ec2 = st.columns([0.6, 0.4], gap="large")
     with col_ec1:
         chart_type = st.selectbox(
             "Chart type",
@@ -589,6 +641,7 @@ with tabs[2]:
         show_light_overlay = st.checkbox("Show light overlay", value=True)
         show_dlmo_ec = st.checkbox("Overlay DLMO", value=True)
         show_cbt_ec = st.checkbox("Overlay CBTmin", value=False)
+    plot_height = st.slider("Plot height (px)", min_value=360, max_value=900, value=560, step=20)
 
     if chart_type == "Actogram (Heatmap)":
         bin_hours = st.select_slider("Bin size (hours)", options=[0.25, 0.5, 1.0, 2.0], value=0.5)
@@ -602,8 +655,15 @@ with tabs[2]:
                 overlay["DLMO"] = list(model.dlmos(traj))
             if show_cbt_ec:
                 overlay["CBTmin"] = list(model.cbt(traj))
-        option = _build_actogram_heatmap_option(time_arr, light_arr, threshold=threshold, bin_hours=float(bin_hours), title="Actogram (Heatmap)", overlay_events=overlay)
-        _render_echarts(option, height=460)
+        option = _build_actogram_heatmap_option(
+            time_arr,
+            light_arr,
+            threshold=threshold,
+            bin_hours=float(bin_hours),
+            title="Actogram (Heatmap)",
+            overlay_events=overlay,
+        )
+        _render_echarts(option, height=plot_height)
 
     elif chart_type == "ESRI":
         col_ea, col_eb, col_ec = st.columns(3)
@@ -622,8 +682,14 @@ with tabs[2]:
                 "showSymbol": False,
                 "smooth": smooth_lines,
             }]
-            option = _build_line_option("ESRI over time", "Time (h)", "ESRI (a.u.)", series)
-            _render_echarts(option, height=420)
+            # convert to days on x-axis
+            if len(esri_t):
+                t0 = float(esri_t[0])
+            else:
+                t0 = 0.0
+            series[0]["data"] = [[(float(t)-t0)/24.0, float(v) if np.isfinite(v) else None] for t, v in zip(esri_t, esri_vals)]
+            option = _build_line_option("ESRI over time", "Time (days)", "ESRI (a.u.)", series)
+            _render_echarts(option, height=plot_height)
         except Exception as e:
             st.error(f"Failed to compute ESRI: {e}")
 
@@ -711,15 +777,24 @@ with tabs[2]:
             {"type": "value", "name": "Light (log10(1+lux))"},
         ]
 
-        option = _build_multi_axis_line_option(
-            "Amplitude, Phase, and Light",
-            "Time (h)",
-            y_axes,
-            amp_series + phase_series + light_series,
-            x_min=float(time_arr[0]) if len(time_arr) else None,
-            x_max=float(time_arr[-1]) if len(time_arr) else None,
+        # Convert x-axis to days for readability
+        time_days = (time_arr - float(time_arr[0])) / 24.0 if len(time_arr) else time_arr
+        for s in amp_series + phase_series + light_series:
+            s["data"] = [[float(td), y] for (td, y) in zip(time_days, [p[1] for p in s["data"]])]
+
+        # Two-row layout: top amplitude, bottom phase + light
+        option = _build_two_row_line_option(
+            title_top="Amplitude",
+            title_bottom="Phase and Light",
+            x_label="Time (days)",
+            y_label_top="Amplitude (a.u.)",
+            y_label_bottom="Phase (h) / Light",
+            series_top=amp_series,
+            series_bottom=phase_series + light_series,
+            x_min=float(time_days[0]) if len(time_arr) else None,
+            x_max=float(time_days[-1]) if len(time_arr) else None,
         )
-        _render_echarts(option, height=480)
+        _render_echarts(option, height=plot_height)
 
 # -----------------------------
 # Footer

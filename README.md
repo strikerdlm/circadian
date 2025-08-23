@@ -52,6 +52,17 @@ analyzing wereable data via the `circadian.readers` module.
 Check out the [documentation](https://arcascope.github.io/circadian/)
 for a full overview of the package and its features.
 
+## Capabilities
+
+- **Simulation and models**: Forger99, Jewett99, Hannay19, Hannay19TP; RK4 integration and utilities for equilibrating initial conditions.
+- **Light schedules**: `LightSchedule` helpers for Regular, ShiftWork, SlamShift, SocialJetlag, and custom pulses via `from_pulse` and composable schedules.
+- **Phase analysis**: Compute DLMO and CBT markers from model trajectories; tools for Phase Response Curves via `PRCFinder`, intensity, and dosage response protocols.
+- **Plotting**: Publication-ready actograms via `circadian.plots.Actogram` with smoothing, thresholds, secondary zeitgeber, and phase markers.
+- **Wearable data**: CSV/JSON readers (`load_csv`, `load_json`), a `DataFrame.wearable` accessor, and sample data for quick visualization.
+- **Metrics**: ESRI (Entrainment Signal Regularity Index) computation utilities.
+- **Command line**: Scriptable actograms and ESRI workflows in `circadian/cli.py`.
+- **Interactive UI**: A Streamlit app (Circadian Explorer) for model simulation and wearable visualization. See `README_STREAMLIT.md`.
+
 ## Example
 
 The code below shows how to simulate the circadian rhythm of a shift
@@ -137,6 +148,10 @@ We welcome contributions to circadian via issues, pull requests, or
 comments! Please see our [contributing
 guidelines](https://arcascope.github.io/circadian/contributing.html) for
 more information.
+
+# Acknowledgements
+
+UI updates for the Streamlit app and related UX improvements were contributed by **Dr Diego Malpica**.
 
 # Citation
 

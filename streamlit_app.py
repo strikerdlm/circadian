@@ -1,6 +1,7 @@
 import os
 import json
 import time
+import warnings
 import numpy as np
 import streamlit as st
 import matplotlib.pyplot as plt
@@ -21,6 +22,9 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Reduce duplicate warnings from model equilibration across repeated runs
+warnings.filterwarnings("once", message="The model did not equilibrate.*")
 
 # Remove Streamlit's default padding and max-width constraints
 st.markdown(
@@ -116,12 +120,10 @@ def compute_light(
         )
     elif schedule_name == "SocialJetlag":
         # Map UI parameters to library API: SocialJetlag expects `hours_delayed`
-        # If separate bedtime/waketime delays are provided, combine them sensibly
         hours_delayed = params.get("hours_delayed")
         if hours_delayed is None:
             late_bedtime = float(params.get("late_bedtime", 1.0))
             late_waketime = float(params.get("late_waketime", 2.0))
-            # Use average shift as a simple, stable proxy
             hours_delayed = float((late_bedtime + late_waketime) / 2.0)
         sched = LightSchedule.SocialJetlag(
             lux=params.get("lux", 150.0),
@@ -496,37 +498,37 @@ with tabs[0]:
 
     with left:
         st.subheader("💡 Light Schedule")
-        schedule_name = st.selectbox("Schedule", SCHEDULE_OPTIONS, index=0)
-        total_days = st.slider("Total days", min_value=5, max_value=120, value=30, step=1)
-        step_hours = st.select_slider("Time step (hours)", options=[0.05, 0.1, 0.25, 0.5, 1.0], value=0.1)
+        schedule_name = st.selectbox("Schedule", SCHEDULE_OPTIONS, index=0, help="Light zeitgeber pattern in photopic lux; models map lux to retinal drive via a saturating nonlinearity.")
+        total_days = st.slider("Total days", min_value=5, max_value=120, value=30, step=1, help="Simulation horizon (days) for model integration and visualizations.")
+        step_hours = st.select_slider("Time step (hours)", options=[0.05, 0.1, 0.25, 0.5, 1.0], value=0.1, help="Numerical integration step (h). Smaller values resolve fast phototransduction dynamics (n).")
 
         sched_params = {}
         if schedule_name == "Regular":
-            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=150.0, step=10.0)
-            sched_params["lights_on"] = st.number_input("Lights on (h)", min_value=0.0, max_value=24.0, value=7.0, step=0.5)
-            sched_params["lights_off"] = st.number_input("Lights off (h)", min_value=0.0, max_value=24.0, value=23.0, step=0.5)
+            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=150.0, step=10.0, help="Corneal photopic illuminance (lx). Higher lux increases retinal transduction α(L) driving SCN.")
+            sched_params["lights_on"] = st.number_input("Lights on (h)", min_value=0.0, max_value=24.0, value=7.0, step=0.5, help="Local clock time when light interval begins each day.")
+            sched_params["lights_off"] = st.number_input("Lights off (h)", min_value=0.0, max_value=24.0, value=23.0, step=0.5, help="Local clock time when light interval ends each day.")
         elif schedule_name == "ShiftWork":
-            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=300.0, step=10.0)
-            sched_params["days_on"] = st.number_input("Night days on", min_value=1, max_value=14, value=3, step=1)
-            sched_params["days_off"] = st.number_input("Days off", min_value=1, max_value=14, value=2, step=1)
+            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=300.0, step=10.0, help="Illuminance during work/wake across the shift block.")
+            sched_params["days_on"] = st.number_input("Night days on", min_value=1, max_value=14, value=3, step=1, help="Number of consecutive night‑shift days (higher imposes stronger non‑24 phase pressure).")
+            sched_params["days_off"] = st.number_input("Days off", min_value=1, max_value=14, value=2, step=1, help="Number of recovery days following night shifts.")
         elif schedule_name == "SlamShift":
-            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=300.0, step=10.0)
-            sched_params["shift"] = st.number_input("Shift (h)", min_value=-12.0, max_value=12.0, value=8.0, step=0.5)
+            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=300.0, step=10.0, help="Illuminance across baseline and post‑shift schedule.")
+            sched_params["shift"] = st.number_input("Shift (h)", min_value=-12.0, max_value=12.0, value=8.0, step=0.5, help="Abrupt shift of photoperiod: positive = delay; negative = advance (hours).")
         elif schedule_name == "SocialJetlag":
-            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=150.0, step=10.0)
-            sched_params["num_regular_days"] = st.number_input("Regular days", min_value=1, max_value=6, value=5, step=1)
-            sched_params["late_bedtime"] = st.number_input("Weekend bedtime delay (h)", min_value=0.0, max_value=12.0, value=1.0, step=0.5)
-            sched_params["late_waketime"] = st.number_input("Weekend wake delay (h)", min_value=0.0, max_value=12.0, value=2.0, step=0.5)
+            sched_params["lux"] = st.number_input("Lux", min_value=0.0, value=150.0, step=10.0, help="Typical indoor illuminance during wake across the week.")
+            sched_params["num_regular_days"] = st.number_input("Regular days", min_value=1, max_value=6, value=5, step=1, help="Number of baseline days before delayed weekend timing (e.g., 5 in 5+2).")
+            sched_params["late_bedtime"] = st.number_input("Weekend bedtime delay (h)", min_value=0.0, max_value=12.0, value=1.0, step=0.5, help="Additional delay applied to lights‑off relative to regular days.")
+            sched_params["late_waketime"] = st.number_input("Weekend wake delay (h)", min_value=0.0, max_value=12.0, value=2.0, step=0.5, help="Additional delay applied to lights‑on relative to regular days.")
         elif schedule_name == "Custom Pulse":
-            sched_params["lux"] = st.number_input("Pulse Lux", min_value=0.0, value=500.0, step=10.0)
-            sched_params["start"] = st.number_input("Pulse start (h)", min_value=0.0, max_value=24.0, value=8.0, step=0.25)
-            sched_params["duration"] = st.number_input("Pulse duration (h)", min_value=0.1, max_value=24.0, value=2.0, step=0.25)
-            sched_params["period"] = st.number_input("Repeat every (h)", min_value=0.0, max_value=168.0, value=24.0, step=1.0)
-            sched_params["baseline"] = st.number_input("Baseline Lux", min_value=0.0, value=0.0, step=10.0)
+            sched_params["lux"] = st.number_input("Pulse Lux", min_value=0.0, value=500.0, step=10.0, help="Rectangular pulse height (lx) per period.")
+            sched_params["start"] = st.number_input("Pulse start (h)", min_value=0.0, max_value=24.0, value=8.0, step=0.25, help="Start time (local hours) of the pulse within each period.")
+            sched_params["duration"] = st.number_input("Pulse duration (h)", min_value=0.1, max_value=24.0, value=2.0, step=0.25, help="Pulse width (h).")
+            sched_params["period"] = st.number_input("Repeat every (h)", min_value=0.0, max_value=168.0, value=24.0, step=1.0, help="Pulse periodicity (h). Use 24 for daily, 168 for weekly.")
+            sched_params["baseline"] = st.number_input("Baseline Lux", min_value=0.0, value=0.0, step=10.0, help="Constant illuminance between pulses.")
 
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         with st.expander("⚙️ Advanced"):
-            equilibration_reps = st.number_input("Equilibration repetitions", min_value=0, max_value=20, value=2, step=1, help="How many times to loop the schedule to reach equilibrium before simulating.")
+            equilibration_reps = st.number_input("Equilibration repetitions", min_value=0, max_value=20, value=5, step=1, help="How many times to loop the schedule to reach equilibrium before simulating.")
             show_dlmo = st.toggle("Overlay DLMO", value=True, help="Show DLMO phase markers on the actogram.")
             show_cbt = st.toggle("Overlay CBTmin", value=False, help="Show CBT minimum phase markers on the actogram.")
             threshold = st.number_input("Actogram threshold (Lux)", min_value=0.0, value=10.0, step=1.0, help="Lux cutoff between light and dark for actogram shading.")
@@ -537,7 +539,7 @@ with tabs[0]:
 
     with right:
         st.subheader("🧠 Models and Examples")
-        chosen_models = st.multiselect("Models", list(MODEL_OPTIONS.keys()), default=["Forger99", "Hannay19"])
+        chosen_models = st.multiselect("Models", list(MODEL_OPTIONS.keys()), default=["Forger99", "Hannay19"], help="Select oscillator formulations: Forger/Jewett (3‑state), Hannay (amplitude–phase), HannayTP (two‑population).")
         example = st.selectbox(
             "Examples",
             [
@@ -547,7 +549,7 @@ with tabs[0]:
                 "Single pulse at 20:00",
             ],
             index=0,
-        )
+            help="Prefill canonical light schedules to showcase typical phase responses.")
 
         if example != "None":
             if example == "Shift worker (3 nights on / 2 off)":
@@ -590,13 +592,50 @@ with tabs[1]:
 
     col_u1, col_u2 = st.columns([0.6, 0.4])
     with col_u1:
-        upload_type = st.radio("File type", ["CSV", "JSON"], horizontal=True)
-        file = st.file_uploader("Upload file", type=["csv", "json"]) 
-        threshold_u = st.number_input("Actogram threshold (Lux or proxy)", min_value=0.0, value=1.0, step=0.5)
-        smooth_sigma_u = st.number_input("Smooth sigma", min_value=0.0, value=0.5, step=0.5)
+        upload_type = st.radio(
+            "File type",
+            ["CSV", "JSON"],
+            horizontal=True,
+            help=(
+                "Override file parsing. Readers expect a time column and a "
+                "signal stream (e.g., light_estimate, activity)."
+            ),
+        )
+        file = st.file_uploader(
+            "Upload file",
+            type=["csv", "json"],
+            help=(
+                "CSV or JSON with columns like datetime/start/end and a "
+                "signal (light_estimate/activity/steps/wake)."
+            ),
+        )
+        threshold_u = st.number_input(
+            "Actogram threshold (Lux or proxy)",
+            min_value=0.0,
+            value=1.0,
+            step=0.5,
+            help="Binarization cutoff for the uploaded stream to render light/dark.",
+        )
+        smooth_sigma_u = st.number_input(
+            "Smooth sigma",
+            min_value=0.0,
+            value=0.5,
+            step=0.5,
+            help="Gaussian σ (h) for smoothing uploaded streams.",
+        )
     with col_u2:
-        demo_choice = st.selectbox("Or load an example", ["None", "sample_actiwatch.csv", "steps_data.csv", "hr_data.csv"], index=0)
-        run_plot = st.button("▶️ Plot Actogram", type="primary", use_container_width=True)
+        demo_choice = st.selectbox(
+            "Or load an example",
+            ["None", "sample_actiwatch.csv", "steps_data.csv", "hr_data.csv"],
+            index=0,
+            help="Load built-in sample wearable streams.",
+        )
+        run_plot = st.button(
+            "▶️ Plot Actogram",
+            type="primary",
+            use_container_width=True,
+            help="Render actogram using uploaded or example data.",
+        )
 
     def _load_demo(path_name: str):
         base = os.path.join("circadian", "sample_data")
@@ -687,13 +726,37 @@ with tabs[2]:
             "Chart type",
             ["Amplitude & Phase", "Actogram (Heatmap)", "ESRI"],
             index=0,
+            help="Select visualization using current Simulation inputs.",
         )
     with col_ec2:
-        smooth_lines = st.toggle("Smooth lines", value=True, help="Enable line smoothing for readability.")
-        show_light_overlay = st.toggle("Show light overlay", value=True, help="Show light schedule overlay.")
-        show_dlmo_ec = st.toggle("Overlay DLMO", value=True, help="Show DLMO markers in charts.")
-        show_cbt_ec = st.toggle("Overlay CBTmin", value=False, help="Show CBTmin markers in charts.")
-    plot_height = st.slider("Plot height (px)", min_value=360, max_value=900, value=560, step=20)
+        smooth_lines = st.toggle(
+            "Smooth lines",
+            value=True,
+            help="Enable visual line smoothing in charts.",
+        )
+        show_light_overlay = st.toggle(
+            "Show light overlay",
+            value=True,
+            help="Overlay log10(1+lux) for contextual light magnitude.",
+        )
+        show_dlmo_ec = st.toggle(
+            "Overlay DLMO",
+            value=True,
+            help="Add Dim Light Melatonin Onset phase markers.",
+        )
+        show_cbt_ec = st.toggle(
+            "Overlay CBTmin",
+            value=False,
+            help="Add core body temperature minimum markers.",
+        )
+    plot_height = st.slider(
+        "Plot height (px)",
+        min_value=360,
+        max_value=900,
+        value=560,
+        step=20,
+        help="Chart canvas height in pixels.",
+    )
 
     st.divider()
     
@@ -701,7 +764,12 @@ with tabs[2]:
     chart_container = st.container()
 
     if chart_type == "Actogram (Heatmap)":
-        bin_hours = st.select_slider("Bin size (hours)", options=[0.25, 0.5, 1.0, 2.0], value=0.5)
+        bin_hours = st.select_slider(
+            "Bin size (hours)",
+            options=[0.25, 0.5, 1.0, 2.0],
+            value=0.5,
+            help="Heatmap ZT bin size for aggregating light values.",
+        )
         # Compute events from first selected model for overlay clarity
         overlay = {}
         if len(chosen_models) > 0:
@@ -727,11 +795,33 @@ with tabs[2]:
     elif chart_type == "ESRI":
         col_ea, col_eb, col_ec = st.columns(3)
         with col_ea:
-            esri_days = st.number_input("Analysis days", min_value=2, max_value=10, value=4, step=1)
+            esri_days = st.number_input(
+                "Analysis days",
+                min_value=2,
+                max_value=10,
+                value=4,
+                step=1,
+                help="ESRI propagation window length (days).",
+            )
         with col_eb:
-            esri_dt = st.select_slider("ESRI dt (h)", options=[0.5, 1.0, 2.0], value=1.0)
+            esri_dt = st.select_slider(
+                "ESRI dt (h)",
+                options=[0.5, 1.0, 2.0],
+                value=1.0,
+                help="Sampling stride for ESRI evaluation (hours).",
+            )
         with col_ec:
-            init_amp = st.number_input("Initial amplitude", min_value=0.0, max_value=1.0, value=0.1, step=0.05)
+            init_amp = st.number_input(
+                "Initial amplitude",
+                min_value=0.0,
+                max_value=1.0,
+                value=0.1,
+                step=0.05,
+                help=(
+                    "Seed amplitude; equals ESRI in constant darkness and sets "
+                    "the baseline for regularity."
+                ),
+            )
         try:
             esri_t, esri_vals = esri(time_arr, light_arr, analysis_days=int(esri_days), esri_dt=float(esri_dt), initial_amplitude=float(init_amp))
             series = [{

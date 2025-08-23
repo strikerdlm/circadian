@@ -91,6 +91,81 @@ streamlit run streamlit_app.py
 - Actogram Heatmap of light schedule with optional DLMO/CBT overlays
 - ESRI metric over time
 
+### UI reference (technical)
+
+The UI exposes model inputs, light schedules, and visualization controls. Below are precise definitions oriented to physiological interpretation of human circadian timing (SCN-driven oscillation) and light transduction.
+
+#### Simulation tab – Light schedule (zeitgeber)
+- **Schedule**: Selects a deterministic zeitgeber `LightSchedule` applied at the cornea (photopic lux). Models convert lux to a retinal drive via a saturating nonlinearity.
+  - **Regular**: Constant daily photoperiod. Parameters:
+    - **Lux**: Corneal photopic illuminance (lx) during wake/light; proxy for melanopic retinal irradiance driving SCN via ipRGC. Higher lux increases `α(L)` and thus SCN light drive.
+    - **Lights on/off (h)**: Local clock times (0–24) defining the light interval each day.
+  - **ShiftWork**: Repeating block of night shifts then days off. Parameters:
+    - **Lux**: Illuminance while awake/working.
+    - **Night days on / Days off**: Work/off block lengths (days); induces non-24 phase demands.
+  - **SlamShift**: Single abrupt shift (± hours) of the photoperiod after a baseline.
+    - **Lux**: As above.
+    - **Shift (h)**: Phase delay (+) or advance (−) of the light window.
+  - **SocialJetlag**: Week with regular days followed by delayed weekend schedule.
+    - **Lux**: As above.
+    - **Regular days**: Count of baseline days (typically 5).
+    - **Weekend bedtime/wake delay (h)**: Additional delay applied to `lights_on/off` on weekend.
+  - **Custom Pulse**: Rectangular pulse repeated with period.
+    - **Pulse Lux**: Pulse height (lx).
+    - **Pulse start/duration (h)**: Start time and length within each period.
+    - **Repeat every (h)**: Pulse periodicity (e.g., 24 for daily, 168 for weekly).
+    - **Baseline Lux**: Constant baseline between pulses.
+- **Total days**: Simulation horizon in days.
+- **Time step (hours)**: Numerical integration dt (h) for RK4; smaller dt resolves fast transients in `n` (phototransduction adaptation).
+
+#### Simulation tab – Advanced
+- **Equilibration repetitions**: Number of pre-simulation repetitions of the selected schedule used to converge to a limit cycle. This suppresses dependence on arbitrary initial conditions and yields steady-state phase.
+- **Overlay DLMO**: Marks Dim Light Melatonin Onset as `CBTmin − cbt_to_dlmo` (default 7 h) in each model; DLMO is used as a proxy for circadian phase of the SCN–pineal axis.
+- **Overlay CBTmin**: Marks core body temperature minima (model-defined troughs), a canonical phase reference for the SCN pacemaker output.
+- **Actogram threshold (Lux)**: Lux cutoff to dichotomize the actogram into “light” versus “dark” rectangles.
+- **Smooth sigma**: Gaussian kernel σ (h) used to smooth light streams for robust on/off segmentation.
+
+#### Simulation tab – Models and examples
+- **Models**: Choose one or more oscillators:
+  - `Forger99`, `Jewett99`: 3‑state limit cycle pacemakers with state `(x, xc, n)`; `n` is the photic drive/phototransduction variable. Phase is `arg(x, −xc)`; amplitude is `√(x² + (−xc)²)`.
+  - `Hannay19`: Macroscopic amplitude–phase oscillator `(R, Ψ, n)`; `R` is the order-parameter amplitude, `Ψ` the phase.
+  - `Hannay19TP`: Two‑population variant `(Rv, Rd, Ψv, Ψd, n)` representing SCN ventral/dorsal couplings; plotted amplitude is `Rv`.
+- **Examples**: Prefills canonical light schedules (e.g., 3 night shifts / 2 off; 5+2 social jetlag; single evening pulse).
+
+#### Wearable data tab
+- **File type / Upload**: Accepts CSV/JSON following `circadian.readers`; selects the most informative stream (`light_estimate`, `activity`, `steps`, or `wake`).
+- **Actogram threshold (Lux or proxy)**: Binarization threshold applied to the uploaded stream.
+- **Smooth sigma**: Smoothing σ (h) for robust light/activity segmentation.
+- **Or load an example**: Uses files in `circadian/sample_data/`.
+
+#### Interactive charts tab
+- **Chart type**: Select between Amplitude & Phase, Actogram (heatmap), or ESRI.
+- **Smooth lines**: Applies curve smoothing in ECharts rendering (visual only).
+- **Show light overlay**: Adds `log10(1+lux)` as a semi-transparent series for perceptual scaling of light magnitude.
+- **Overlay DLMO/CBTmin**: Adds vertical markers using model‑computed phase landmarks.
+- **Plot height (px)**: Canvas height.
+
+Actogram (heatmap):
+- **Bin size (hours)**: Zeitgeber‑time bin height; values are log‑scaled (`log10(1+lux)`) and averaged per bin; optional markers are rasterized into the heatmap coordinates.
+
+ESRI metric:
+- **Analysis days**: Window length for ESRI (days) over which the model amplitude is propagated.
+- **ESRI dt (h)**: Sampling stride for ESRI evaluation; smaller values produce denser ESRI time series.
+- **Initial amplitude**: Seed amplitude; equals the ESRI value in constant darkness (reference of 0.1 by default).
+
+#### Physiological glossary and model mapping
+- **Lux (photopic)**: Corneal illuminance; models map lux to a retinal transduction term via `α(L)`.
+- **Light transduction `α(L)`**: Saturating nonlinearity; e.g., `α = α0 (L/I0)^p` or `α = α0 L^p / (L^p + I0)`; `I0` is the semisaturation constant; `p` shapes nonlinearity.
+- **SCN light drive `B̂`**: Effective drive term combining transduction and adaptation (e.g., `B̂ = G (1−n) α …`), where `n` recovers with time (minutes–hours) and reduces sensitivity during sustained light.
+- **Phase (φ)**: For `Forger99/Jewett99/Skeldon23`, `φ = arg(x, −xc)`; for `Hannay19/Hannay19TP`, `φ = Ψ` (or `Ψv`). UI converts phase to hours via `φ_h = φ · 12/π` in `[0, 24)`.
+- **Amplitude (R)**: Norm of the oscillator in state space; `√(x² + (−xc)²)` for 3‑state models; `R` for Hannay models.
+- **CBTmin**: Model‑derived core body temperature minimum times; used as a robust phase marker. In Hannay models, CBTmin ≈ `Ψ = π` crossings; in 3‑state models, minima of `x`.
+- **DLMO**: Dim Light Melatonin Onset; approximated as `CBTmin − cbt_to_dlmo` (default 7 h), recognizing stable offset between melatonin secretion onset and CBT minima.
+- **Equilibration**: Repetition of the zeitgeber until sequential DLMO markers converge (steady entrained limit cycle); prevents transient‑dependent phase estimation.
+- **Zeitgeber time (ZT)**: Clock time aligned to the external cycle; ZT 0 corresponds to `time % 24 == 0`.
+- **ESRI**: Entrainment Signal Regularity Index. Implemented by simulating an amplitude–phase oscillator (Hannay19) with `K = 0`, `γ = 0` so amplitude is constant in darkness; under a given light schedule, the propagated amplitude after `analysis_days` quantifies temporal regularity of the zeitgeber. Negative values are treated as invalid (NaN).
+
+
 ## Example
 
 The code below shows how to simulate the circadian rhythm of a shift

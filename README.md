@@ -179,7 +179,13 @@ more information.
 
 # Acknowledgements
 
-UI updates for the Streamlit app and related UX improvements were contributed by **Dr Diego Malpica**.
+UI updates for the Streamlit app and related UX improvements were contributed by **Dr. Diego L. Malpica**.
+
+### About the contributor
+
+- **Diego L. Malpica** — Aerospace Medicine researcher focused on human performance in extreme environments, integrating AI and advanced analytics for operational decision-making.
+- **ORCID**: [0000-0002-2257-4940](https://orcid.org/0000-0002-2257-4940)
+- **LinkedIn**: [in/diegolmalpica](https://www.linkedin.com/in/diegolmalpica/)
 
 # Citation
 

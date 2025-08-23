@@ -139,13 +139,17 @@ def _get_echarts_js() -> str:
     except Exception:
         return ""
 
-def _render_echarts(option: dict, height: int = 420, key: str = None, width: int = None):
+def _render_echarts(option: dict, height: int = 420, key: str = None, width: int = None, full_bleed: bool = False):
     """Render an ECharts chart via a lightweight HTML component."""
     container_id = f"echarts-container-{int(time.time()*1000)}"
     option_json = json.dumps(option)
     echarts_js = _get_echarts_js()
+    container_style = "width:100%;" if not full_bleed else (
+        "position:relative;width:100vw;left:50%;right:50%;"
+        "margin-left:-50vw;margin-right:-50vw;"
+    )
     html_str = f"""
-    <div id='{container_id}' style='width:100%;height:{height}px;'></div>
+    <div id='{container_id}' style='{container_style}height:{height}px;'></div>
     <script>
     {echarts_js}
     (function(){{
@@ -663,7 +667,7 @@ with tabs[2]:
             title="Actogram (Heatmap)",
             overlay_events=overlay,
         )
-        _render_echarts(option, height=plot_height)
+        _render_echarts(option, height=plot_height, full_bleed=True)
 
     elif chart_type == "ESRI":
         col_ea, col_eb, col_ec = st.columns(3)
@@ -689,7 +693,7 @@ with tabs[2]:
                 t0 = 0.0
             series[0]["data"] = [[(float(t)-t0)/24.0, float(v) if np.isfinite(v) else None] for t, v in zip(esri_t, esri_vals)]
             option = _build_line_option("ESRI over time", "Time (days)", "ESRI (a.u.)", series)
-            _render_echarts(option, height=plot_height)
+            _render_echarts(option, height=plot_height, full_bleed=True)
         except Exception as e:
             st.error(f"Failed to compute ESRI: {e}")
 
@@ -794,7 +798,7 @@ with tabs[2]:
             x_min=float(time_days[0]) if len(time_arr) else None,
             x_max=float(time_days[-1]) if len(time_arr) else None,
         )
-        _render_echarts(option, height=plot_height)
+        _render_echarts(option, height=plot_height, full_bleed=True)
 
 # -----------------------------
 # Footer

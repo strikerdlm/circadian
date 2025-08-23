@@ -36,8 +36,14 @@ st.markdown(
     div[data-testid="stIFrame"] > iframe {
         width: 100% !important;
     }
+    /* Increase spacing between top-level tabs */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 2px;
+        gap: 20px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        padding-left: 18px;
+        padding-right: 18px;
+        margin-right: 2px;
     }
     </style>
     """,

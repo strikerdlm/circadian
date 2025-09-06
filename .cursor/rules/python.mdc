@@ -1,0 +1,105 @@
+---
+alwaysApply: true
+---
+[[cursor]] [[rules]]
+
+
+
+## Code Style & Quality
+
+- Follow PEP 8; enforce automatic formatting with black and import sorting with isort.
+- Use ruff (or flake8) as the fast linter; run in CI and via pre-commit.
+- Add docstrings for all public functions/classes (Google or NumPy style) and include short examples for library entry points.
+- Use type hints everywhere practical; run static checks with mypy or pyright in CI.
+- Keep functions short and focused (prefer <= 50 lines); single-responsibility principle for functions and modules.
+- Prefer immutable data structures and pure functions where possible; use dataclasses / attrs / pydantic for structured data.
+- Avoid deep nesting — use early returns and small helper functions.
+- Write clear error messages and use custom exceptions for domain errors.
+- Use UTF-8 for all files and enforce via editorconfig or CI checks.
+
+## Project Structure
+
+- Use a feature-oriented package layout (or src/ layout) and keep top-level scripts minimal:
+  - Example: src/cursor/, services/, tests/, docs/, scripts/
+- Place new applications under /services as packages with __init__.py and a minimal CLI entrypoint.
+- Separate layers: api/ui (CLI), application/domain (business logic), infrastructure (IO, storage, external APIs).
+- Mirror source structure in tests/ for easy navigation.
+- Export small, stable public APIs via package __init__.py; keep implementation private.
+
+## Environment & Configuration
+
+- Store secrets outside source control. Use a .env for local dev (python-dotenv) and a secrets manager (Vault / AWS Secrets Manager) for production.
+- Use typed settings (pydantic BaseSettings or dataclass wrappers) for configuration and centralize config parsing.
+- Layer config: defaults <- config files <- .env <- environment variables <- CLI args.
+- Never commit API keys; add .env to .gitignore and provide a .env.example with required keys (no secrets).
+
+## Dependencies
+
+- Add dependencies deliberately and incrementally. Require a PR with motivation for each new library.
+- Use a lockfile: poetry (pyproject.toml + poetry.lock) or requirements.in → requirements.txt via pip-compile.
+- Use Dependabot / automated scanning and run safety checks in CI.
+- Prefer stdlib and small, well-maintained libraries. Add heavyweight libraries only when justified.
+- Keep rich for output/formatting where useful, but isolate UI code so core logic remains dependency-light.
+
+## Documentation
+
+- Update README.md with quickstart, architecture diagram, and examples for new features.
+- Maintain API/usage docs (mkdocs or Sphinx) and a changelog (Keep a CHANGELOG.md).
+- Document public functions/classes with docstrings and provide migration notes for breaking changes.
+- Add short HOWTOs for adding a service, running tests, and releasing.
+
+## Development Standards
+
+- Implement pre-commit hooks (black, isort, ruff, mypy) and run linters + tests in CI.
+- Use logging.getLogger(__name__); configure logging centrally (avoid print()).
+- Structured logs (JSON) for production services if integrating with log aggregators.
+- Keep PRs small and review-focused; require at least one reviewer for non-trivial changes.
+- Use feature branches and semantic commit messages; adopt a release tagging convention.
+
+## File & Function Size Limits (keep files short & maintainable)
+
+- Aim for small modules and functions:
+  - Function length: <= 50 lines (prefer <= 30).
+  - Class length: reasonable (methods short and cohesive).
+  - Module length: prefer <= 300 lines; split when logic grows or responsibilities diverge.
+- Enforce cyclomatic complexity thresholds (e.g., complexity <= 10) with radon or ruff rules.
+- Refactor: if adding > ~100 lines to a file, consider a new module or service.
+- Add a short module-level comment describing responsibilities at the top of each file.
+
+## OpenAI Integration
+
+- Centralize OpenAI calls in a dedicated client/service wrapper (no raw calls scattered across code).
+- Make model, timeout, and concurrency configurable via environment variables; keep the default model configurable (e.g., gpt-4o-2024-11-20 if required) rather than hardcoding.
+- Implement retries with exponential backoff and jitter for rate limits/errors (tenacity or custom).
+- Validate and sanitize prompts and responses; parse outputs with pydantic models to avoid brittle string parsing.
+- Log request metadata (IDs, model, duration) but avoid logging full prompts or sensitive content.
+- Cache deterministic responses where useful; track cost and rate usage.
+- Support streaming responses for long outputs and set reasonable timeouts and token limits.
+
+## Menu System
+
+- Keep core/menu.py as a thin UI layer: present choices and call pure application functions from other modules.
+- Avoid business logic in the menu; place logic in services or domain modules for testability.
+- Use click or prompt_toolkit for robust CLI; use rich for display formatting.
+- Add unit tests for menu behavior by injecting mocks/stubs for services.
+
+## Testing & Quality Assurance
+
+- Use pytest; organize tests in tests/ mirroring package layout.
+- Provide unit tests, focused integration tests, and CI-run smoke tests for critical paths.
+- Use fixtures and parametrized tests to cover boundary conditions; mock external services (OpenAI) in unit tests.
+- Enforce tests, linting, and type checking in CI pipeline. Optionally add mutation tests for critical code.
+- Aim for meaningful coverage metrics rather than arbitrary percentages; prioritize important logic paths.
+
+## Debugging
+
+- Use DEBUG=True in .env for local debugging but ensure debug mode is off in production.
+- Centralize debug settings and use correlation IDs for tracing requests across services.
+- Capture errors in monitoring (Sentry or similar) and include sampling of contextual metadata (but not secrets).
+- Add dev-only tooling (repl, debug endpoints) behind config flags guarded by environment and auth.
+
+## Multiline input
+
+- Use rich for output formatting and prompt_toolkit (or prompt-toolkit integration) for robust multiline input in terminal UIs.
+- Validate and sanitize multiline input; enforce length limits and content rules at input boundaries.
+- Keep input parsing separate from UI handling; convert raw input to typed objects (pydantic/dataclass) and validate before processing.
